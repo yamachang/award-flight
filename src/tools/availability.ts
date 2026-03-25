@@ -1,37 +1,14 @@
 import { z } from "zod";
 import { apiRequest } from "../api.js";
-
-const SOURCES = [
-  "eurobonus",
-  "virginatlantic",
-  "aeromexico",
-  "american",
-  "delta",
-  "etihad",
-  "united",
-  "emirates",
-  "aeroplan",
-  "alaska",
-  "velocity",
-  "qantas",
-  "connectmiles",
-  "azul",
-  "smiles",
-  "flyingblue",
-  "jetblue",
-  "qatar",
-  "turkish",
-  "singapore",
-  "ethiopian",
-  "saudia",
-] as const;
+import { SOURCES, CABIN_CLASSES } from "../constants.js";
+import { type AvailabilityItem, formatAvailabilityItems } from "../format.js";
 
 export const BulkAvailSchema = z.object({
   source: z
     .enum(SOURCES)
     .describe("Mileage program source (e.g. alaska, aeroplan, united)"),
   cabin: z
-    .enum(["economy", "premium", "business", "first"])
+    .enum(CABIN_CLASSES)
     .optional()
     .describe("Cabin class filter"),
   start_date: z
@@ -45,7 +22,7 @@ export const BulkAvailSchema = z.object({
   origin_region: z
     .string()
     .optional()
-    .describe("Origin region filter (e.g. North America, Asia)"),
+    .describe("Origin region filter (e.g. North America, Asia, Europe, Middle East, Oceania, Africa, South America)"),
   destination_region: z
     .string()
     .optional()
@@ -66,11 +43,17 @@ export async function getBulkAvailability(
     take: (args.take ?? 50).toString(),
   });
 
+  const result = data as { data?: AvailabilityItem[]; count?: number; hasMore?: boolean };
+
   return {
     content: [
       {
         type: "text" as const,
-        text: `Bulk availability for ${args.source}:\n\n${JSON.stringify(data, null, 2)}`,
+        text: formatAvailabilityItems(result.data, {
+          title: `Bulk availability for ${args.source}`,
+          count: result.count,
+          hasMore: result.hasMore,
+        }),
       },
     ],
   };

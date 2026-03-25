@@ -36,3 +36,37 @@ export async function apiRequest(
 
   return response.json();
 }
+
+// Throttled parallel API requests with concurrency limit
+const MAX_CONCURRENT = 4;
+
+export async function throttledApiRequests<T>(
+  requests: Array<() => Promise<T>>
+): Promise<Array<{ status: "fulfilled"; value: T } | { status: "rejected"; reason: string }>> {
+  const results: Array<{ status: "fulfilled"; value: T } | { status: "rejected"; reason: string }> = [];
+  const executing = new Set<Promise<void>>();
+
+  for (const [i, reqFn] of requests.entries()) {
+    const promise = (async () => {
+      try {
+        const value = await reqFn();
+        results[i] = { status: "fulfilled", value };
+      } catch (err) {
+        results[i] = {
+          status: "rejected",
+          reason: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    })();
+
+    executing.add(promise);
+    promise.then(() => executing.delete(promise));
+
+    if (executing.size >= MAX_CONCURRENT) {
+      await Promise.race(executing);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
