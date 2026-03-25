@@ -4,6 +4,8 @@ import { SearchSchema, searchFlights } from "./tools/search.js";
 import { BulkAvailSchema, getBulkAvailability } from "./tools/availability.js";
 import { GetTripsSchema, getTrips } from "./tools/trips.js";
 import { SweetSpotsSchema, searchSweetSpots } from "./tools/sweet-spots.js";
+import { ReleasePatternSchema, detectReleasePatterns } from "./tools/release-patterns.js";
+import { CollectSnapshotSchema, collectSnapshot, AnalyzePatternsSchema, analyzeReleasePatterns } from "./tools/snapshot.js";
 
 const server = new McpServer({
   name: "award-flight",
@@ -93,6 +95,56 @@ and filter by region. Results include the source program so you know
 which points/miles to use.`,
   SweetSpotsSchema.shape,
   async (params) => searchSweetSpots(params)
+);
+
+// Tool 5: Detect Release Patterns — instant analysis from single query
+server.tool(
+  "detect_release_patterns",
+  `Detect airline award seat release patterns by analyzing current availability.
+Scans the next 60 days (configurable) to infer when each airline releases partner award seats.
+
+How it works: If ANA business class via united is only available for flights within the next 10 days,
+it likely means ANA releases partner seats ~10 days before departure.
+
+Use this for quick one-time analysis. For precise patterns, use collect_snapshot + analyze_release_patterns.
+
+Examples:
+- "When does ANA release business class seats?" → origin=JFK,EWR,ORD, destination=NRT,HND, cabin=business
+- "Release patterns for all airlines US to Asia" → origin=JFK,EWR,ORD,LAX,SFO, destination=NRT,HND,TPE,ICN,SIN, cabin=business
+
+Common airlines: NH=ANA, JL=JAL, BR=EVA Air, JX=Starlux, CX=Cathay Pacific, SQ=Singapore, TK=Turkish`,
+  ReleasePatternSchema.shape,
+  async (params) => detectReleasePatterns(params)
+);
+
+// Tool 6: Collect Snapshot — daily data collection for pattern tracking
+server.tool(
+  "collect_snapshot",
+  `Collect and save a snapshot of current award availability for long-term pattern analysis.
+Run this DAILY for 2-4 weeks to build enough data for accurate release pattern detection.
+
+Saves data to local JSON files. Each snapshot records which flights are available today,
+so over time we can see exactly when new seats first appear.
+
+Tip: Set up a daily cron job or reminder to run this consistently.
+After collecting enough data, use analyze_release_patterns to find the patterns.`,
+  CollectSnapshotSchema.shape,
+  async (params) => collectSnapshot(params)
+);
+
+// Tool 7: Analyze Release Patterns — find patterns from collected snapshots
+server.tool(
+  "analyze_release_patterns",
+  `Analyze collected snapshots to find precise award seat release patterns.
+Requires data from collect_snapshot (run daily for 2-4 weeks).
+
+Compares snapshots over time to determine exactly how many days before departure
+each airline releases seats to each mileage program.
+
+Output includes: min/max/median/mode days before departure, broken down by airline and mileage program.
+This reveals patterns like "ANA releases to Star Alliance partners 14 days out, but to own program 21 days out."`,
+  AnalyzePatternsSchema.shape,
+  async (params) => analyzeReleasePatterns(params)
 );
 
 const transport = new StdioServerTransport();
